@@ -1,0 +1,221 @@
+---
+title: "KV6015-DataAnalyticsRAssessmentAnswer"
+author: "Rayhan Chowdhury Bijoy"
+format: 
+  html:
+      self-contained: true
+date: "2024-12-05"
+editor: source
+---
+
+```{r}
+library(readxl)
+library(tibble)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(tidyr)
+```
+
+# Load the data
+```{r}
+# Load the data from the Excel file
+data <- read_excel("./PreparedData.xlsx")
+
+# Convert the data to a tibble
+data_tibble <- as_tibble(data)
+
+# View the tibble (first few rows)
+print(data_tibble)
+```
+
+#-----------------------1.	Hypothesis 01 (Gender-based Focus): Linear Model Test-----------------------
+```{r}
+# Create a 'Period' column based on the 'Date'
+data_tibble <- data_tibble %>%
+  mutate(Period = case_when(
+    Date %in% c("2018/19", "2019/20") ~ "Pre-pandemic",
+    Date %in% c("2020/21", "2021/22") ~ "Pandemic",
+    Date %in% c("2022/23", "2023/24") ~ "Post-pandemic",
+    TRUE ~ "Unknown"
+  )) %>%
+  mutate(Period = factor(Period, levels = c("Pre-pandemic", "Pandemic", "Post-pandemic")))
+
+# Calculate the reductions for Male and Female candidates by period
+data_tibble <- data_tibble %>%
+  arrange(Date) %>%
+  group_by(Period) %>%
+  mutate(
+    Male_tests_Reduction = c(NA, diff(`Male tests-Conducted`)),
+    Female_tests_Reduction = c(NA, diff(`Female tests-Conducted`))
+  )
+
+# Remove rows with NA values (first row of each period has NA for reduction)
+data_tibble <- data_tibble %>%
+  filter(!is.na(Male_tests_Reduction), !is.na(Female_tests_Reduction))
+
+# Fit the linear model for Male tests reduction
+model_male <- lm(Male_tests_Reduction ~ Period, data = data_tibble)
+summary(model_male)
+
+# Fit the linear model for Female tests reduction
+model_female <- lm(Female_tests_Reduction ~ Period, data = data_tibble)
+summary(model_female)
+```
+
+#-----------------------1.	Hypothesis 1 (Gender-based Focus): Chi-Square Test-----------------------
+```{r}
+# Create a contingency table for the Chi-square test
+# Summarize reductions by gender and period
+data_tibble_summary <- data_tibble %>%
+  group_by(Period) %>%
+  summarise(
+    Male_Reduction = sum(Male_tests_Reduction, na.rm = TRUE),
+    Female_Reduction = sum(Female_tests_Reduction, na.rm = TRUE)
+  )
+
+# Convert reductions into a matrix for the Chi-square test
+reduction_matrix <- as.matrix(data_tibble_summary[, c("Male_Reduction", "Female_Reduction")])
+rownames(reduction_matrix) <- data_tibble_summary$Period
+
+# Perform the Chi-square test
+chi_square_result <- chisq.test(reduction_matrix)
+
+# Output the test result
+print(chi_square_result)
+```
+
+# Visulize the Hypothesis 01 - Chi-Square Data
+```{r}
+# Create a dataset for plotting by summarizing Male and Female reductions by period and reshaping the data
+ggplot(data_tibble %>%
+         group_by(Period) %>%
+         summarise(
+           Male_Reduction = sum(Male_tests_Reduction, na.rm = TRUE),
+           Female_Reduction = sum(Female_tests_Reduction, na.rm = TRUE) 
+         ) %>% 
+         pivot_longer(cols = c(Male_Reduction, Female_Reduction), names_to = "Gender", values_to = "Reduction") %>%
+         mutate(Gender = recode(Gender, "Male_Reduction" = "Male", "Female_Reduction" = "Female")), 
+       aes(x = Period, y = Reduction, fill = Gender)) +
+  geom_bar(stat = "identity", position = "dodge") +  # Create a dodged bar plot
+  scale_fill_manual(values = c("Male" = "skyblue", "Female" = "hotpink")) +  # Correct color mapping
+  labs(
+    title = "Reduction in Automatic Driving Test Candidates by Gender and Period",
+    x = "Period",
+    y = "Reduction in Candidates",
+    fill = "Gender"
+  ) +
+  theme_minimal() +  # Apply a minimal theme
+  scale_y_continuous(labels = scales::comma)  # Format y-axis with commas for better readability
+```
+
+# Hypothesis 01 Discussion - Overall Summary, Linear Modeal VS Chi-Square
+The analysis supports Hypothesis 1, showing significant differences in the reduction of driving test candidates between males and females during the COVID-19 pandemic. The Chi-square test revealed a highly significant difference in reductions across gender and periods (p-value < 2.2e-16), indicating that gender-based impacts were not equal. The linear regression models also indicated reductions in both male and female candidates, but due to limited data and perfect model fit, the Chi-square test was more reliable for confirming the significant difference between genders. Thus, the Chi-square test is the more robust method for assessing gender-based differences in reductions.
+
+#-----------------------2.	Hypothesis 2 (Year-based Focus): Linear Model Test-----------------------
+```{r}
+# Load the data function
+load_data <- function() {
+  data <- read_excel("./PreparedData.xlsx")
+  as_tibble(data)
+}
+
+# Reload the data before Hypothesis 2 analysis
+data_tibble <- load_data()
+
+# Hypothesis 2: Year-based Focus Analysis
+# Recreate Period column to ensure consistency
+data_tibble <- data_tibble %>%
+  mutate(Period = case_when(
+    Date %in% c("2018/19", "2019/20") ~ "Pre-pandemic",
+    Date %in% c("2020/21", "2021/22") ~ "Pandemic",
+    Date %in% c("2022/23", "2023/24") ~ "Post-pandemic",
+    TRUE ~ "Unknown"
+  )) %>%
+  mutate(Period = factor(Period, levels = c("Pre-pandemic", "Pandemic", "Post-pandemic")))
+
+# Calculate the reduction in 'Total tests-Conducted' for each period
+data_tibble <- data_tibble %>%
+  arrange(Date) %>%
+  group_by(Period, .drop = FALSE) %>%  # Retain unused levels
+  mutate(Test_Reduction = c(NA, diff(`Total tests-Conducted`))) %>%
+  filter(!is.na(Test_Reduction))  # Remove rows with NA values
+
+# Check levels after filtering
+print(levels(data_tibble$Period))
+print(table(data_tibble$Period))
+
+# Fit the linear model to examine the reduction in tests by period
+model_total_tests <- lm(Test_Reduction ~ Period, data = data_tibble)
+
+# Output the summary of the linear model
+summary(model_total_tests)
+
+```
+
+
+#-----------------------2.	Hypothesis 2 (Year-based Focus): Chi-Square Test-----------------------
+```{r}
+# Reload the data to ensure a clean slate
+data_tibble <- load_data()
+
+# Recreate Period column
+data_tibble <- data_tibble %>%
+  mutate(Period = case_when(
+    Date %in% c("2018/19", "2019/20") ~ "Pre-pandemic",
+    Date %in% c("2020/21", "2021/22") ~ "Pandemic",
+    Date %in% c("2022/23", "2023/24") ~ "Post-pandemic",
+    TRUE ~ "Unknown"
+  )) %>%
+  mutate(Period = factor(Period, levels = c("Pre-pandemic", "Pandemic", "Post-pandemic")))
+
+# Calculate the reductions in 'Total tests-Conducted' for each period
+data_tibble <- data_tibble %>%
+  arrange(Date) %>%
+  group_by(Period, .drop = FALSE) %>%
+  mutate(Test_Reduction = c(NA, diff(`Total tests-Conducted`))) %>%
+  filter(!is.na(Test_Reduction))  # Remove rows with NA values
+
+# Summarize reductions by period
+data_tibble_summary <- data_tibble %>%
+  group_by(Period) %>%
+  summarise(Total_Reduction = sum(Test_Reduction, na.rm = TRUE))
+
+# Create a contingency table for Chi-Square Test
+reduction_matrix <- as.matrix(data_tibble_summary[, "Total_Reduction"])
+rownames(reduction_matrix) <- data_tibble_summary$Period
+
+# Perform the Chi-Square Test
+chi_square_result <- chisq.test(reduction_matrix)
+
+# Output the test result
+print(chi_square_result)
+
+```
+
+# Visulize the Hypothesis 02 - Chi-Square Data
+```{r}
+# Visualization of Total Reductions by Period for Hypothesis 2
+ggplot(data_tibble_summary, aes(x = Period, y = Total_Reduction, fill = Period)) +
+  geom_bar(stat = "identity", width = 0.7) +
+  scale_fill_manual(values = c("Pre-pandemic" = "blue", "Pandemic" = "#FFA500", "Post-pandemic" = "#008080")) +
+  labs(
+    title = "Reduction in Automatic Driving Test Candidates by Period",
+    x = "Period",
+    y = "Total Reduction in Candidates",
+    fill = "Period"
+  ) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 12),
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  ) +
+  scale_y_continuous(labels = scales::comma)  # Format y-axis with commas for readability
+```
+
+# Hypothesis 02 Discussion - Overall Summary, Linear Modeal VS Chi-Square
+The analysis supports Hypothesis 2, showing significant differences in the reduction of driving test candidates across the pre-pandemic, pandemic, and post-pandemic periods. The Chi-Square Test revealed a highly significant difference in reductions across these periods (p-value < 2.2e-16), indicating that the impact of the pandemic on driving test candidates was not consistent with the other periods.
+
+The linear regression model attempted to quantify the reductions but was limited by the small sample size, resulting in perfect model fit and indeterminate p-values due to zero degrees of freedom. While the regression model highlighted noticeable differences in reductions across periods, the Chi-Square Test was more robust in confirming these differences.
+
+Thus, the Chi-Square Test provides stronger evidence supporting Hypothesis 2, emphasizing that the reduction in driving test candidates during the pandemic was significantly different from both the pre-pandemic and post-pandemic periods.
