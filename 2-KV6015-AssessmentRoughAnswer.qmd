@@ -19,6 +19,7 @@ library(tidyr)
 
 # Load the data
 ```{r}
+# The original data, “dvsa1206.ods”, was structured into “PreparedData.xlsx” to align with my aim and hypotheses.
 # Load the data from the Excel file
 data <- read_excel("./PreparedData.xlsx")
 
